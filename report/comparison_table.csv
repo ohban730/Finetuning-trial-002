@@ -1,0 +1,3 @@
+run,trainable_params,total_params,trainable_ratio_%,peak_gpu_memory_gb,train_runtime_sec,final_train_loss,adopted_epoch,adopted_eval_loss
+Full-FT,336128000,336128000,100.0,7.43,58.3,0.7535,2.0,1.2563
+LoRA,2162688,338290688,0.6393,3.8,205.5,1.3655,15.0,1.3721

@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# 学習成果物（モデル本体・checkpoint）。main.py / main_lora.py で再生成できる
+# 特にoutput/full_ftはfull fine-tuningのモデル一式で1GB超になるためgit管理しない
+output/
+**/checkpoint-*/
+
+# OS / エディタ
+Thumbs.db
+.DS_Store
