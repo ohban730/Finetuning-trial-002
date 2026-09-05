@@ -10,3 +10,9 @@ output/
 # OS / エディタ
 Thumbs.db
 .DS_Store
+
+# Hugging Faceアップロード関連（自分用。docs/huggingface_upload_manual.md参照）
+docs/huggingface_upload_manual.md
+hf_model_card_*.md
+upload_to_hf.py
+update_model_cards.py
