@@ -3,6 +3,13 @@
 指示ファインチューニングにおける「フルファインチューニング vs LoRA」の計算リソース比較検証。
 題材はカジュアルな日本語文 → フォーマルな日本語文への変換（片方向）。
 
+## 関連リンク
+
+- 検証結果まとめ: [Zenn記事](https://zenn.dev/sapolas/articles/0175b65f1e5b8c)
+- 学習済みモデル（Hugging Face）:
+  - Full-FT: [Sapolas0730/japanese-gpt2-medium-formal-fullft](https://huggingface.co/Sapolas0730/japanese-gpt2-medium-formal-fullft)
+  - LoRA: [Sapolas0730/japanese-gpt2-medium-formal-lora](https://huggingface.co/Sapolas0730/japanese-gpt2-medium-formal-lora)
+
 ## 環境
 
 - conda環境: `llm-sandbox`
@@ -28,7 +35,7 @@ magpie.py（データ生成） → main.py / main_lora.py（学習） → infer.
 
 ### 1. データ生成: `magpie.py`
 
-`meta-llama/Meta-Llama-3-8B-Instruct` を使い、MAGPIE手法でカジュアル文→フォーマル文変換の指示データを生成する。system promptはペルソナ説明のみに留め、userターンをモデルに自己生成させることで多様な指示文を作る。日本語純度・フォーマット・長さ比・疑問形保持・重複のフィルタを通過したものだけを採用する。
+`Qwen/Qwen2.5-7B-Instruct` を使い、MAGPIE手法でカジュアル文→フォーマル文変換の指示データを生成する。system promptはペルソナ説明のみに留め、userターンをモデルに自己生成させることで多様な指示文を作る。日本語純度・フォーマット・長さ比・疑問形保持・重複のフィルタを通過したものだけを採用する。
 
 ```bash
 & "C:\Users\owner\miniconda3\envs\llm-sandbox\python.exe" magpie.py --num_samples 1000 --output_path dataset_formal.json
@@ -39,7 +46,9 @@ magpie.py（データ生成） → main.py / main_lora.py（学習） → infer.
 | `--num_samples` | `50` | 生成する件数 |
 | `--output_path` | `dataset_formal.json` | 出力先JSON（`instruction`/`input`/`output`形式）。10件ごとに途中経過を保存するので中断しても失われない |
 
-ゲート付きモデルのため、初回はHugging Faceでライセンス同意＋`huggingface-cli login`が必要。1000件規模だと生成に数時間かかることがある。
+`Qwen/Qwen2.5-7B-Instruct`はゲートなしで利用できるため、`huggingface-cli login`やライセンス同意は不要（元は`meta-llama/Meta-Llama-3-8B-Instruct`を使用していたが、そのライセンス条項の懸念から変更した。詳細は後述の「ライセンス」参照）。
+
+> **注意**: モデルによって自己生成する「userターン」の形式が異なる。Llama-3系は`「次の文をフォーマルな言い方に変換してください：（文）」`という依頼文形式で生成したが、Qwen2.5はこの依頼文を使わずカジュアルな一文を直接生成する傾向がある。`extract_casual_sentence`はどちらの形式にも対応している。
 
 ### 2. 学習: `main.py`
 
@@ -88,7 +97,7 @@ magpie.py（データ生成） → main.py / main_lora.py（学習） → infer.
 
 `metrics.json`は`main.py`と同じスキーマ＋`lora_config`が追加された形で保存されるので、そのまま`report.py`で比較できる。保存されるのはLoRAアダプタのみ（`adapter_model.safetensors`、数MB程度）で、ベースモデルは保存しないためFull-FTよりディスク使用量が大幅に少ない。
 
-動作確認（実データ1000件・8epoch）: 学習可能パラメータ 2,162,688（Full-FTの0.64%）、ピークGPUメモリ 3.80GB（Full-FTは7.43GB）、アダプタサイズ約8.7MB。
+実データ1000件・最大15epochでの実行結果: 学習可能パラメータ 2,162,688（Full-FTの0.64%）、ピークGPUメモリ 3.17GB（Full-FTは6.84GB）、アダプタサイズ約8.7MB。詳細は[Zenn記事](https://zenn.dev/sapolas/articles/0175b65f1e5b8c)を参照。
 
 ### 3. 動作確認: `infer.py`
 
@@ -146,6 +155,26 @@ output/       学習成果物（モデル・metrics.json）。git管理対象外
 report/       比較表・グラフの出力先
 ```
 
-## 今後の予定
+## 今後改善するなら
 
-- 実データでFull-FTとLoRAの本番学習を行い、`report.py --run "Full-FT:..." --run "LoRA:..."` で最終比較結果をZenn記事用にまとめる
+Full-FTではエポック数が大きくなると過学習が起きた（エポック2をピークにeval_lossが悪化）。学習データが1000件と少なかったことが一因と考えられるため、より大量の学習データを用意して再検証したい。詳細な考察は[Zenn記事](https://zenn.dev/sapolas/articles/0175b65f1e5b8c)を参照。
+
+## ライセンス
+
+### 本プロジェクトのコード
+
+MIT License。詳細は[LICENSE](LICENSE)を参照。
+
+### ベースモデル
+
+`rinna/japanese-gpt2-medium`はMIT Licenseで配布されています。本プロジェクトが公開しているファインチューニング済みモデル（Full-FT / LoRAアダプタ）もこれに従います。
+
+### 学習データ（`dataset_formal.json`）について
+
+学習データは`Qwen/Qwen2.5-7B-Instruct`（Apache License 2.0、ゲートなし）の出力をMAGPIE手法で合成したものです。
+
+このプロジェクトは当初、データ生成に`meta-llama/Meta-Llama-3-8B-Instruct`を使用していました。しかし同モデルが従うMeta Llama 3 Community Licenseの第1.b.v項に、
+
+> "You will not use the Llama Materials or any output or results of the Llama Materials to improve any other large language model (excluding Meta Llama 3 or derivative works thereof)."
+
+という「Llama 3の出力を使って他のLLMを改善（ファインチューニング）してはならない」という制限があることに後から気づき、本プロジェクトの用途がこの制限に文面上抵触する可能性があったため、より寛容なライセンス（Apache 2.0）で提供されている`Qwen/Qwen2.5-7B-Instruct`にデータ生成モデルを切り替え、データ・学習済みモデルを作り直しました。他のモデルの出力を学習データに使う際は、ベースモデルのライセンス条項（特に生成物の再利用・再配布・派生モデルの学習に関する制限）を事前に確認することをお勧めします。

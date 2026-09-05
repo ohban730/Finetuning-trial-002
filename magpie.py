@@ -9,7 +9,7 @@ from transformers.utils import logging as hf_logging
 
 hf_logging.set_verbosity_error()
 
-MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
+MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
 # カジュアルな一文の題材にバリエーションを持たせるためのトピック一覧
 TOPICS = [
@@ -36,10 +36,9 @@ SYSTEM_PROMPT_TEMPLATE = (
     "説明や前置き、英語は一切使わず、変換後の日本語の文のみを答えます。"
 )
 PROMPT_TEMPLATE = (
-    "<|begin_of_text|>"
-    "<|start_header_id|>system<|end_header_id|>\n\n"
-    "{system_prompt}<|eot_id|>"
-    "<|start_header_id|>user<|end_header_id|>\n\n"
+    "<|im_start|>system\n"
+    "{system_prompt}<|im_end|>\n"
+    "<|im_start|>user\n"
 )
 MAX_NEW_TOKENS = 150
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -61,12 +60,20 @@ def is_japanese_text(text: str, min_jp_ratio: float = 0.3, max_ascii_ratio: floa
 
 
 def extract_casual_sentence(instruction: str) -> str | None:
-    """instructionが規定のフォーマットに沿っているか確認し、カジュアルな原文部分だけ取り出す。
-    フォーマットから外れた（=文体変換タスクではない）生成結果を除外するためのフィルタ。"""
-    match = INSTRUCTION_PATTERN.match(instruction.strip())
-    if not match:
+    """instructionからカジュアルな原文部分だけ取り出す。
+    モデルによっては「次の文をフォーマルな言い方に変換してください：（文）」という
+    依頼文形式で生成することがあり、その場合はその形式から文を取り出す。
+    依頼文形式を使わずカジュアルな一文だけを直接生成するモデルもあるため、
+    その場合は生成結果全体をそのままカジュアルな原文として扱う（長すぎるものは除外）。"""
+    text = instruction.strip()
+    match = INSTRUCTION_PATTERN.match(text)
+    if match:
+        return match.group(1).strip(QUOTE_CHARS)
+
+    text = text.strip(QUOTE_CHARS)
+    if not text or len(text) > 60:
         return None
-    return match.group(1).strip(QUOTE_CHARS)
+    return text
 
 
 def filter_and_normalize(instruction: str, output: str) -> tuple[str, str] | None:
@@ -125,7 +132,7 @@ def generate(tokenizer, model, prompt: str, **generate_kwargs) -> tuple[str, str
 
 
 def generate_one(tokenizer, model) -> dict | None:
-    eot_str = "<|eot_id|>"
+    eot_str = "<|im_end|>"
     topic = random.choice(TOPICS)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(topic=topic)
     prompt = PROMPT_TEMPLATE.format(system_prompt=system_prompt)
@@ -137,7 +144,7 @@ def generate_one(tokenizer, model) -> dict | None:
     if not sys_usr.endswith(eot_str):
         sys_usr += eot_str
 
-    response_gen_input = sys_usr + "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    response_gen_input = sys_usr + "\n<|im_start|>assistant\n"
     _, output = generate(tokenizer, model, response_gen_input)
     output = output.replace(eot_str, "").strip()
     if not is_japanese_text(output):
